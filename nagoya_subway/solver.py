@@ -195,26 +195,3 @@ class SubwaySolver:
                     to_remove[i] = True
 
         return [r for k, r in enumerate(best_routes) if not to_remove[k]]
-
-# --- 実行テスト用 ---
-if __name__ == "__main__":
-    solver = SubwaySolver(files)
-    print("\n=== 検索テスト ===")
-    try:
-        results = solver.solve(
-            endpoints=[],
-            via_hard=["Kawana","Yagoto"],
-            via_soft=[],
-            budget=5,
-            min_budget=1
-        )
-
-        if not results:
-            print("条件を満たすルートが見つかりませんでした。")
-        else:
-            print(f"🎉 {len(results)} 件のルートが見つかりました")
-            for i, r in enumerate(results):
-                print(f"\n[Route {i+1}]  料金区間:{r['zone']}, 要求を満たせなかった駅:{r['score']}")
-                print(" -> ".join(r['route_names']))
-    except Exception as e:
-        print(f"Runtime Error: {e}")
