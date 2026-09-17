@@ -56,13 +56,23 @@ export interface RouteResult {
 export interface SearchMeta {
   complete: boolean;
   timedOut: boolean;
+  stopped: boolean;
   hasMore: boolean;
   returnedCount: number;
+  modelsSeen: number;
+  discoveredCount: number;
+  elapsedSeconds: number;
 }
 
 export interface SearchResponse {
   results: RouteResult[];
   search: SearchMeta;
+}
+
+export interface SearchJob {
+  status: 'running' | 'complete' | 'stopped' | 'error';
+  response: SearchResponse;
+  error?: string;
 }
 
 export type SortKey = 'recommended' | 'satisfaction' | 'zone' | 'stations';

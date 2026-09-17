@@ -1,5 +1,5 @@
 import { deriveRouteLines } from '../data/network';
-import type { RouteResult, SearchConditions, SearchMeta, SearchResponse } from '../types';
+import type { RouteResult, SearchConditions, SearchJob, SearchMeta, SearchResponse } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
@@ -22,8 +22,18 @@ interface RawSearchResponse {
     timed_out?: boolean;
     has_more?: boolean;
     returned_count?: number;
+    models_seen?: number;
+    discovered_count?: number;
+    elapsed_seconds?: number;
+    stopped?: boolean;
   };
   detail?: string;
+}
+
+interface RawSearchJob {
+  status: SearchJob['status'];
+  response: RawSearchResponse;
+  error?: string;
 }
 
 const normalizeRoute = (route: RawRouteResult, index: number): RouteResult => {
@@ -45,14 +55,7 @@ const normalizeRoute = (route: RawRouteResult, index: number): RouteResult => {
   };
 };
 
-export const searchRoutes = async (
-  conditions: SearchConditions,
-  signal?: AbortSignal,
-): Promise<SearchResponse> => {
-  const response = await fetch(`${API_BASE_URL}/solve`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+const requestBody = (conditions: SearchConditions) => ({
       endpoints: conditions.selections.endpoints,
       via_hard: conditions.selections.via_hard,
       via_soft: conditions.selections.via_soft,
@@ -60,22 +63,63 @@ export const searchRoutes = async (
       min_budget: conditions.minZone,
       budget: conditions.maxZone,
       max_results: 50,
-    }),
-    signal,
-  });
+});
 
-  const payload = (await response.json()) as RawSearchResponse;
-  if (!response.ok) {
-    throw new Error(payload.detail || '経路の計算に失敗しました．');
-  }
-
+const normalizeResponse = (payload: RawSearchResponse): SearchResponse => {
   const results = (payload.results ?? []).map(normalizeRoute);
   const search: SearchMeta = {
     complete: payload.search?.complete ?? true,
     timedOut: payload.search?.timedOut ?? payload.search?.timed_out ?? false,
+    stopped: payload.search?.stopped ?? false,
     hasMore: payload.search?.hasMore ?? payload.search?.has_more ?? false,
     returnedCount: payload.search?.returnedCount ?? payload.search?.returned_count ?? results.length,
+    modelsSeen: payload.search?.modelsSeen ?? payload.search?.models_seen ?? 0,
+    discoveredCount: payload.search?.discoveredCount ?? payload.search?.discovered_count ?? 0,
+    elapsedSeconds: payload.search?.elapsedSeconds ?? payload.search?.elapsed_seconds ?? 0,
   };
 
   return { results, search };
+};
+
+const parseError = async (response: Response) => {
+  const payload = (await response.json()) as RawSearchResponse;
+  throw new Error(payload.detail || '経路の計算に失敗しました．');
+};
+
+export const searchRoutes = async (conditions: SearchConditions, signal?: AbortSignal): Promise<SearchResponse> => {
+  const response = await fetch(`${API_BASE_URL}/solve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(requestBody(conditions)),
+    signal,
+  });
+  if (!response.ok) return parseError(response);
+  return normalizeResponse((await response.json()) as RawSearchResponse);
+};
+
+export const startSearchJob = async (conditions: SearchConditions): Promise<string> => {
+  const response = await fetch(`${API_BASE_URL}/solve/jobs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(requestBody(conditions)),
+  });
+  if (!response.ok) return parseError(response);
+  const payload = (await response.json()) as { job_id: string };
+  return payload.job_id;
+};
+
+export const getSearchJob = async (jobId: string): Promise<SearchJob> => {
+  const response = await fetch(`${API_BASE_URL}/solve/jobs/${jobId}`);
+  if (!response.ok) return parseError(response);
+  const payload = (await response.json()) as RawSearchJob;
+  return {
+    status: payload.status,
+    response: normalizeResponse(payload.response),
+    error: payload.error,
+  };
+};
+
+export const stopSearchJob = async (jobId: string): Promise<void> => {
+  const response = await fetch(`${API_BASE_URL}/solve/jobs/${jobId}`, { method: 'DELETE' });
+  if (!response.ok) return parseError(response);
 };

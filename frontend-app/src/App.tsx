@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { searchRoutes } from './api/solver';
+import { useMemo, useRef, useState } from 'react';
+import { getSearchJob, startSearchJob, stopSearchJob } from './api/solver';
 import { Onboarding } from './components/Onboarding';
 import { RouteCard } from './components/RouteCard';
 import { SearchPanel } from './components/SearchPanel';
@@ -10,7 +10,18 @@ import { filterAndSortResults, type ResultFilters } from './utils/results';
 import './styles/app-v2.css';
 
 const ONBOARDING_KEY = 'nagoya-subway-onboarding-v1';
-const emptyMeta: SearchMeta = { complete: true, timedOut: false, hasMore: false, returnedCount: 0 };
+const emptyMeta: SearchMeta = {
+  complete: true,
+  timedOut: false,
+  stopped: false,
+  hasMore: false,
+  returnedCount: 0,
+  modelsSeen: 0,
+  discoveredCount: 0,
+  elapsedSeconds: 0,
+};
+
+const wait = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 
 export default function App() {
   const { conditions, setConditions, resetConditions } = usePersistentConditions();
@@ -19,6 +30,9 @@ export default function App() {
   const [meta, setMeta] = useState<SearchMeta>(emptyMeta);
   const [activeResultId, setActiveResultId] = useState<string>();
   const [loading, setLoading] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const [progress, setProgress] = useState<SearchMeta>(emptyMeta);
+  const activeJobId = useRef<string | undefined>(undefined);
   const [error, setError] = useState('');
   const [dirty, setDirty] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>('recommended');
@@ -68,18 +82,42 @@ export default function App() {
       return;
     }
     setLoading(true);
+    setStopping(false);
+    setProgress({ ...emptyMeta, complete: false });
     setError('');
     try {
-      const response = await searchRoutes(conditions);
-      setResults(response.results);
-      setMeta(response.search);
-      setActiveResultId(response.results[0]?.id);
+      const jobId = await startSearchJob(conditions);
+      activeJobId.current = jobId;
+      let job = await getSearchJob(jobId);
+      while (job.status === 'running') {
+        setProgress(job.response.search);
+        await wait(250);
+        job = await getSearchJob(jobId);
+      }
+      if (job.status === 'error') throw new Error(job.error || '経路の計算に失敗しました．');
+      setProgress(job.response.search);
+      setResults(job.response.results);
+      setMeta(job.response.search);
+      setActiveResultId(job.response.results[0]?.id);
       setDirty(false);
       setFilters((current) => ({ ...current, maxZone: conditions.maxZone }));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : '検索中にエラーが発生しました．');
     } finally {
+      activeJobId.current = undefined;
       setLoading(false);
+      setStopping(false);
+    }
+  };
+
+  const handleStopSearch = async () => {
+    if (!activeJobId.current || stopping) return;
+    setStopping(true);
+    try {
+      await stopSearchJob(activeJobId.current);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '探索を中断できませんでした．');
+      setStopping(false);
     }
   };
 
@@ -142,6 +180,24 @@ export default function App() {
           </div>
         </aside>
       </main>
+      {loading && (
+        <div className="search-progress-backdrop" role="dialog" aria-modal="true" aria-labelledby="search-progress-title">
+          <div className="search-progress-card">
+            <div className="search-animation" aria-hidden="true"><span /><span /><span /></div>
+            <p className="eyebrow">ROUTE EXPLORATION</p>
+            <h2 id="search-progress-title">定期経路を探索中</h2>
+            <p className="discovery-count"><strong>{progress.discoveredCount.toLocaleString()}</strong>件の経路を発見</p>
+            <p className="search-progress-detail">{progress.modelsSeen.toLocaleString()}通りを検証済み・{progress.elapsedSeconds.toFixed(1)}秒</p>
+            {progress.elapsedSeconds < 6 ? (
+              <p className="stop-guidance">6秒後から，現在の候補で探索を終了できる．</p>
+            ) : (
+              <button className="stop-search-button" disabled={stopping} onClick={handleStopSearch}>
+                {stopping ? '探索を中断しています…' : '現在の候補で探索を終了'}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       {showOnboarding && <Onboarding onClose={closeOnboarding} />}
     </div>
   );

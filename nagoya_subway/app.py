@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import os
+import threading
+import uuid
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,11 +31,13 @@ allowed_origins = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type"],
 )
 
 solver = SubwaySolver(FILES)
+jobs: dict[str, dict[str, Any]] = {}
+jobs_lock = threading.Lock()
 
 
 class SolveRequest(BaseModel):
@@ -68,6 +73,94 @@ def solve_route(request: SolveRequest):
         raise HTTPException(status_code=422, detail=str(error)) from error
     except RuntimeError as error:
         raise HTTPException(status_code=500, detail="経路計算エンジンでエラーが発生した．") from error
+
+
+def validate_request(request: SolveRequest) -> None:
+    positive_stations = set(request.endpoints + request.via_hard + request.via_soft)
+    if len(positive_stations) < 2:
+        raise HTTPException(status_code=422, detail="異なる指定駅を2駅以上選んでください．")
+    if request.min_budget > request.budget:
+        raise HTTPException(status_code=422, detail="予算下限は予算上限以下にしてください．")
+
+
+def run_search_job(job_id: str, request: SolveRequest, stop_event: threading.Event) -> None:
+    def update(response: dict[str, Any]) -> None:
+        with jobs_lock:
+            job = jobs.get(job_id)
+            if job is not None:
+                job["response"] = response
+
+    try:
+        response = solver.solve(
+            endpoints=request.endpoints,
+            via_hard=request.via_hard,
+            via_soft=request.via_soft,
+            avoid=request.avoid,
+            budget=request.budget,
+            min_budget=request.min_budget,
+            max_results=request.max_results,
+            timeout_seconds=None,
+            progress_callback=update,
+            should_stop=stop_event.is_set,
+        )
+        with jobs_lock:
+            jobs[job_id]["response"] = response
+            jobs[job_id]["status"] = "stopped" if response["search"]["stopped"] else "complete"
+    except (ValueError, RuntimeError) as error:
+        with jobs_lock:
+            jobs[job_id]["status"] = "error"
+            jobs[job_id]["error"] = str(error)
+
+
+@app.post("/solve/jobs", status_code=202)
+def create_search_job(request: SolveRequest):
+    validate_request(request)
+    job_id = uuid.uuid4().hex
+    stop_event = threading.Event()
+    with jobs_lock:
+        jobs[job_id] = {
+            "status": "running",
+            "response": {
+                "results": [],
+                "search": {
+                    "complete": False,
+                    "timed_out": False,
+                    "stopped": False,
+                    "has_more": False,
+                    "returned_count": 0,
+                    "models_seen": 0,
+                    "discovered_count": 0,
+                    "elapsed_seconds": 0,
+                },
+            },
+            "error": None,
+            "stop_event": stop_event,
+        }
+    threading.Thread(target=run_search_job, args=(job_id, request, stop_event), daemon=True).start()
+    return {"job_id": job_id}
+
+
+@app.get("/solve/jobs/{job_id}")
+def get_search_job(job_id: str):
+    with jobs_lock:
+        job = jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="探索ジョブが見つかりません．")
+        return {
+            "status": job["status"],
+            "response": job["response"],
+            "error": job["error"],
+        }
+
+
+@app.delete("/solve/jobs/{job_id}")
+def stop_search_job(job_id: str):
+    with jobs_lock:
+        job = jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="探索ジョブが見つかりません．")
+        job["stop_event"].set()
+    return {"status": "stopping"}
 
 
 @app.get("/health")

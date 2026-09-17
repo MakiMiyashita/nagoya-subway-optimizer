@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 import clingo
@@ -39,7 +40,9 @@ class SubwaySolver:
         budget: int,
         min_budget: int,
         max_results: int = 50,
-        timeout_seconds: float = 6.0,
+        timeout_seconds: float | None = 6.0,
+        progress_callback: Callable[[dict[str, Any]], None] | None = None,
+        should_stop: Callable[[], bool] | None = None,
     ) -> dict[str, Any]:
         if len(endpoints) > 2:
             raise ValueError("始発・終着は2駅まで指定できる．")
@@ -72,16 +75,29 @@ class SubwaySolver:
         frontier: dict[tuple[int, tuple[str, ...]], list[dict[str, Any]]] = {}
         seen_paths: set[tuple[str, ...]] = set()
         timed_out = False
+        stopped = False
         model_count = 0
+        last_progress_at = started_at
 
         with control.solve(yield_=True, async_=True) as handle:
             handle.resume()
             while True:
                 if not handle.wait(0.05):
-                    if time.monotonic() - started_at >= timeout_seconds:
+                    now = time.monotonic()
+                    if should_stop and should_stop():
+                        stopped = True
+                        handle.cancel()
+                        break
+                    if timeout_seconds is not None and now - started_at >= timeout_seconds:
                         timed_out = True
                         handle.cancel()
                         break
+                    if progress_callback and now - last_progress_at >= 0.25:
+                        progress_callback(self._build_response(
+                            frontier, max_results, model_count, len(seen_paths), started_at,
+                            complete=False, timed_out=False, stopped=False,
+                        ))
+                        last_progress_at = now
                     continue
 
                 model = handle.model()
@@ -93,25 +109,61 @@ class SubwaySolver:
                 if parsed:
                     self._add_to_frontier(frontier, seen_paths, parsed)
 
-                if time.monotonic() - started_at >= timeout_seconds:
+                now = time.monotonic()
+                if should_stop and should_stop():
+                    stopped = True
+                    handle.cancel()
+                    break
+                if timeout_seconds is not None and now - started_at >= timeout_seconds:
                     timed_out = True
                     handle.cancel()
                     break
+                if progress_callback and now - last_progress_at >= 0.25:
+                    progress_callback(self._build_response(
+                        frontier, max_results, model_count, len(seen_paths), started_at,
+                        complete=False, timed_out=False, stopped=False,
+                    ))
+                    last_progress_at = now
                 handle.resume()
 
+        response = self._build_response(
+            frontier, max_results, model_count, len(seen_paths), started_at,
+            complete=not timed_out and not stopped,
+            timed_out=timed_out,
+            stopped=stopped,
+        )
+        if progress_callback:
+            progress_callback(response)
+        return response
+
+    @staticmethod
+    def _build_response(
+        frontier: dict[tuple[int, tuple[str, ...]], list[dict[str, Any]]],
+        max_results: int,
+        model_count: int,
+        discovered_count: int,
+        started_at: float,
+        *,
+        complete: bool,
+        timed_out: bool,
+        stopped: bool,
+    ) -> dict[str, Any]:
         filtered = [route for routes in frontier.values() for route in routes]
         filtered.sort(key=lambda route: (-len(route["satisfied"]), route["zone"], -route["stations_count"]))
-        has_more = timed_out or len(filtered) > max_results
+        has_more = timed_out or stopped or len(filtered) > max_results
         results = filtered[:max_results]
 
         return {
             "results": results,
             "search": {
-                "complete": not timed_out,
+                "complete": complete,
                 "timed_out": timed_out,
+                "stopped": stopped,
                 "has_more": has_more,
                 "returned_count": len(results),
                 "models_seen": model_count,
+                "discovered_count": discovered_count,
+                "elapsed_seconds": round(time.monotonic() - started_at, 3),
             },
         }
 
