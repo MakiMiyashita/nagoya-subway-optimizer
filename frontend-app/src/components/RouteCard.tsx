@@ -26,26 +26,26 @@ export function RouteCard({ result, preferredStations, ticketKind, period, selec
         </div>
         <span className="match"><strong>{result.satisfied.length}</strong> / {preferredStations.length}駅</span>
       </div>
-      <div className="route-endpoints">
-        <span>{start}</span><span className="route-arrow">→</span><span>{end}</span>
-      </div>
-      <div className="line-chain" aria-label="利用路線">
+      <div className="journey-chain" aria-label={`${start}から${end}までの経路`}>
+        <span className="journey-station">{start}</span>
         {result.lines.map((line, index) => (
-          <span key={`${line}-${index}`} className="line-chip" style={{ '--line-color': LINE_INFO[line].color } as React.CSSProperties}>
-            {LINE_INFO[line].code}<small>{LINE_INFO[line].name}</small>
+          <span key={`${line}-${index}`} className="journey-leg">
+            <span className="journey-dash">—</span>
+            <span className="line-chip" style={{ '--line-color': LINE_INFO[line].color } as React.CSSProperties}>
+              {LINE_INFO[line].code}<small>{LINE_INFO[line].name}</small>
+            </span>
+            <span className="route-arrow">→</span>
+            <span className="journey-station">
+              {index < result.transfers.length ? getStationLabel(result.transfers[index].station) : end}
+            </span>
           </span>
         ))}
-        {result.lines.length === 0 && <span className="muted">路線情報なし</span>}
+        {result.lines.length === 0 && <><span className="route-arrow">→</span><span className="journey-station">{end}</span></>}
       </div>
       <div className="route-stats">
         <span>定期範囲 {result.stationsCount}駅</span>
         <span>乗換 {result.transfers.length}回</span>
       </div>
-      {result.transfers.length > 0 && (
-        <p className="transfer-copy">
-          {result.transfers.map((transfer) => `${getStationLabel(transfer.station)}（${LINE_INFO[transfer.fromLine].name}→${LINE_INFO[transfer.toLine].name}）`).join('，')}
-        </p>
-      )}
       {unmet.length > 0 && <p className="unmet">未達成：{unmet.map(getStationLabel).join('，')}</p>}
       <p className="sale-note">発売可否は交通局窓口で最終確認が必要である．</p>
     </button>

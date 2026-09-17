@@ -49,6 +49,11 @@ export function SubwayMap({ selections, activeRole, activeRoute, onStationClick 
   };
 
   const handlePointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.target instanceof Element && event.target.closest('.station')) {
+      dragRef.current = null;
+      setDragged(false);
+      return;
+    }
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = { x: event.clientX, y: event.clientY, viewX: view.x, viewY: view.y };
     setDragged(false);
