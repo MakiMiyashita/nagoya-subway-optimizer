@@ -51,6 +51,7 @@ main { position: fixed; inset: 68px 0 0; display: grid; grid-template-columns: m
 .route-line { stroke-width: 6; stroke-linecap: round; opacity: .55; transition: opacity .2s, stroke-width .2s; }
 .route-line.active { stroke-width: 12; opacity: 1; filter: drop-shadow(0 2px 2px rgba(20, 31, 32, .2)); }
 .station { cursor: pointer; outline: none; }
+.station-hit-area { fill: transparent; stroke: none; pointer-events: all; }
 .station-dot { fill: #fffdf8; stroke: #34464a; stroke-width: 2; vector-effect: non-scaling-stroke; transition: r .15s; }
 .station:hover .station-dot, .station:focus .station-dot { fill: #fff1c9; stroke-width: 3; }
 .station.on-route .station-dot { fill: #1f2d30; stroke: #fff; stroke-width: 2.5; }
@@ -59,7 +60,8 @@ main { position: fixed; inset: 68px 0 0; display: grid; grid-template-columns: m
 .station.via_hard .role-halo { stroke: var(--required); }
 .station.via_soft .role-halo { stroke: var(--preferred); }
 .station.avoid .role-halo { stroke: var(--avoid); stroke-dasharray: 3 2; }
-.station-label { fill: #263336; paint-order: stroke; stroke: #f4f5f1; stroke-width: 4px; stroke-linejoin: round; font-weight: 700; pointer-events: none; }
+.station-label { opacity: 0; fill: #263336; paint-order: stroke; stroke: #f4f5f1; stroke-width: 4px; stroke-linejoin: round; font-weight: 700; pointer-events: none; transition: opacity .12s ease; }
+.station-label.always-visible, .station:hover .station-label, .station:focus .station-label { opacity: 1; }
 .map-instruction {
   position: absolute; z-index: 3; top: 16px; left: 50%; transform: translateX(-50%);
   padding: 9px 15px; white-space: nowrap; border: 1px solid rgba(22, 45, 43, .15); border-radius: 999px;
@@ -106,6 +108,11 @@ select:focus, input:focus { outline: 3px solid rgba(15, 107, 94, .16); border-co
 .result-controls details { font-size: 12px; }
 .result-controls summary { color: var(--accent); font-weight: 700; cursor: pointer; }
 .result-controls details > label { margin-top: 10px; }
+.station-autocomplete { position: relative; display: block; }
+.station-suggestions { position: absolute; z-index: 15; top: calc(100% + 4px); right: 0; left: 0; display: grid; overflow: hidden; border: 1px solid #cfd6d2; border-radius: 9px; background: #fff; box-shadow: 0 10px 28px rgba(25, 40, 39, .16); }
+.station-suggestions button { min-height: 34px; padding: 0 11px; text-align: left; border: 0; border-bottom: 1px solid #edf0ed; background: #fff; font-size: 12px; cursor: pointer; }
+.station-suggestions button:last-child { border-bottom: 0; }
+.station-suggestions button:hover, .station-suggestions button:focus { outline: none; background: #edf6f3; color: var(--accent-dark); }
 .field-row.compact { grid-template-columns: repeat(3, 1fr); margin-top: 10px; }
 
 .search-notice { margin: 12px 14px 0; padding: 10px; color: #705112; background: #fff3cf; border-radius: 8px; font-size: 11px; line-height: 1.55; }

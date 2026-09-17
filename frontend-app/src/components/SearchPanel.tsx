@@ -1,7 +1,8 @@
+import { useState } from 'react';
 import { FARES, PERIOD_LABELS, TICKET_LABELS, formatYen } from '../constants/fares';
 import type { SearchConditions, SortKey, StationRole } from '../types';
 import type { ResultFilters } from '../utils/results';
-import { getStationLabel } from '../data/stations';
+import { getStationLabel, STATION_LABELS } from '../data/stations';
 
 const ROLE_LABELS: Record<StationRole, string> = {
   endpoints: '始発・終着',
@@ -29,9 +30,14 @@ interface Props {
 }
 
 export function SearchPanel(props: Props) {
+  const [stationFilterFocused, setStationFilterFocused] = useState(false);
   const { conditions } = props;
   const fares = FARES[conditions.ticketKind][conditions.period];
   const update = (patch: Partial<SearchConditions>) => props.onConditionsChange({ ...conditions, ...patch });
+  const stationQuery = props.filters.stationQuery.trim();
+  const stationSuggestions = stationQuery
+    ? STATION_LABELS.filter((stationName) => stationName.includes(stationQuery)).slice(0, 8)
+    : [];
 
   return (
     <div className="search-panel">
@@ -96,7 +102,38 @@ export function SearchPanel(props: Props) {
         <details>
           <summary>絞り込み</summary>
           <label>この駅を経由
-            <input value={props.filters.stationQuery} placeholder="例：栄" onChange={(event) => props.onFiltersChange({ ...props.filters, stationQuery: event.target.value })} />
+            <span className="station-autocomplete">
+              <input
+                value={props.filters.stationQuery}
+                placeholder="駅名を入力"
+                autoComplete="off"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={stationFilterFocused && stationSuggestions.length > 0}
+                aria-controls="station-filter-suggestions"
+                onFocus={() => setStationFilterFocused(true)}
+                onBlur={() => setStationFilterFocused(false)}
+                onChange={(event) => props.onFiltersChange({ ...props.filters, stationQuery: event.target.value })}
+              />
+              {stationFilterFocused && stationSuggestions.length > 0 && (
+                <span id="station-filter-suggestions" className="station-suggestions" role="listbox">
+                  {stationSuggestions.map((stationName) => (
+                    <button
+                      key={stationName}
+                      type="button"
+                      role="option"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        props.onFiltersChange({ ...props.filters, stationQuery: stationName });
+                        setStationFilterFocused(false);
+                      }}
+                    >
+                      {stationName}
+                    </button>
+                  ))}
+                </span>
+              )}
+            </span>
           </label>
           <div className="field-row compact">
             <label>希望達成

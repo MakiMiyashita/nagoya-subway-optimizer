@@ -131,11 +131,17 @@ export function SubwayMap({ selections, activeRole, activeRoute, onStationClick 
                 aria-label={`${station.nameJa}を選択`}
                 onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onStationClick(id); }}
               >
+                <circle r={16 * labelScale} className="station-hit-area" />
                 {role && <circle r={11 * labelScale} className="role-halo" />}
                 <circle r={role ? 6.2 * labelScale : 4.2 * labelScale} className="station-dot" />
-                {(important || view.width < 520) && (
-                  <text x={8 * labelScale} y={-7 * labelScale} fontSize={13 * labelScale} className="station-label">{station.nameJa}</text>
-                )}
+                <text
+                  x={8 * labelScale}
+                  y={-7 * labelScale}
+                  fontSize={13 * labelScale}
+                  className={`station-label ${important || view.width < 520 ? 'always-visible' : ''}`}
+                >
+                  {station.nameJa}
+                </text>
               </g>
             );
           })}
