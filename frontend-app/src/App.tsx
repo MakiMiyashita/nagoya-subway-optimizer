@@ -22,6 +22,7 @@ const emptyMeta: SearchMeta = {
 };
 
 const wait = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+type SheetPosition = 'preview' | 'open';
 
 export default function App() {
   const { conditions, setConditions, resetConditions } = usePersistentConditions();
@@ -37,7 +38,7 @@ export default function App() {
   const [dirty, setDirty] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>('recommended');
   const [filters, setFilters] = useState<ResultFilters>({ minSatisfied: 0, maxZone: 5, minStations: 0, stationQuery: '' });
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetPosition, setSheetPosition] = useState<SheetPosition>('preview');
   const [showOnboarding, setShowOnboarding] = useState(() => localStorage.getItem(ONBOARDING_KEY) !== 'seen');
 
   const displayedResults = useMemo(() => filterAndSortResults(results, filters, sortKey), [results, filters, sortKey]);
@@ -78,7 +79,7 @@ export default function App() {
   const handleSearch = async () => {
     if (positiveStationCount < 2) {
       setError('始発・終着，必須経由，希望経由の中から，異なる駅を2駅以上選んでください．');
-      setSheetOpen(true);
+      setSheetPosition('open');
       return;
     }
     setLoading(true);
@@ -128,6 +129,7 @@ export default function App() {
     setActiveResultId(undefined);
     setError('');
     setDirty(false);
+    setSheetPosition('preview');
   };
 
   const closeOnboarding = () => {
@@ -143,8 +145,12 @@ export default function App() {
       </header>
       <main>
         <SubwayMap selections={conditions.selections} activeRole={activeRole} activeRoute={activeRoute} onStationClick={toggleStation} />
-        <aside className={`workspace-panel ${sheetOpen ? 'open' : ''}`}>
-          <button className="sheet-handle" onClick={() => setSheetOpen(!sheetOpen)} aria-label={sheetOpen ? 'パネルを閉じる' : 'パネルを開く'}><span /></button>
+        <aside className={`workspace-panel ${sheetPosition}`}>
+          <button
+            className="sheet-handle"
+            onClick={() => setSheetPosition(sheetPosition === 'open' ? 'preview' : 'open')}
+            aria-label={sheetPosition === 'open' ? 'パネルをカード表示まで下げる' : 'パネルを開く'}
+          ><span /></button>
           <SearchPanel
             conditions={conditions}
             activeRole={activeRole}
@@ -152,6 +158,7 @@ export default function App() {
             sortKey={sortKey}
             loading={loading}
             resultCount={displayedResults.length}
+            totalCount={meta.discoveredCount}
             error={error}
             dirty={dirty}
             onConditionsChange={changeConditions}
@@ -162,7 +169,6 @@ export default function App() {
             onSearch={handleSearch}
             onReset={handleReset}
           />
-          {(meta.timedOut || meta.hasMore) && <p className="search-notice">条件が広いため探索を打ち切った．ほかにも候補がある可能性がある．</p>}
           <div className="route-list">
             {displayedResults.map((result) => (
               <RouteCard
@@ -172,7 +178,10 @@ export default function App() {
                 ticketKind={conditions.ticketKind}
                 period={conditions.period}
                 selected={result.id === activeResultId}
-                onSelect={() => setActiveResultId(result.id)}
+                onSelect={() => {
+                  setActiveResultId(result.id);
+                  setSheetPosition('preview');
+                }}
               />
             ))}
             {!loading && results.length > 0 && displayedResults.length === 0 && <p className="empty-results">絞り込みに一致する候補がない．</p>}

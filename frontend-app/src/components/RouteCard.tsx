@@ -18,7 +18,16 @@ export function RouteCard({ result, preferredStations, ticketKind, period, selec
   const end = result.routeNames.length ? getStationLabel(result.routeNames[result.routeNames.length - 1]) : '未設定';
 
   return (
-    <button className={`route-card ${selected ? 'selected' : ''}`} onClick={onSelect} aria-pressed={selected}>
+    <button
+      className={`route-card ${selected ? 'selected' : ''}`}
+      onClick={(event) => {
+        if (window.matchMedia('(max-width: 760px)').matches) {
+          event.currentTarget.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        }
+        onSelect();
+      }}
+      aria-pressed={selected}
+    >
       <div className="route-card-top">
         <div>
           <span className="fare">{formatYen(getFare(ticketKind, period, result.zone))}</span>

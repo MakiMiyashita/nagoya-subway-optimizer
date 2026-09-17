@@ -18,6 +18,7 @@ interface Props {
   sortKey: SortKey;
   loading: boolean;
   resultCount: number;
+  totalCount: number;
   error: string;
   dirty: boolean;
   onConditionsChange: (conditions: SearchConditions) => void;
@@ -93,7 +94,10 @@ export function SearchPanel(props: Props) {
       </section>
 
       <section className="result-controls">
-        <div className="section-heading"><h2>候補</h2><span>{props.resultCount}件</span></div>
+        <div className="section-heading">
+          <h2>候補</h2>
+          <span>{props.resultCount}件 / {props.totalCount.toLocaleString()}件中</span>
+        </div>
         <label>並び順
           <select value={props.sortKey} onChange={(event) => props.onSortChange(event.target.value as SortKey)}>
             <option value="recommended">おすすめ順</option><option value="satisfaction">希望達成数</option><option value="zone">料金区が低い順</option><option value="stations">駅数が多い順</option>
