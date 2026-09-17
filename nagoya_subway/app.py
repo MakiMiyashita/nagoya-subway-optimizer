@@ -102,9 +102,12 @@ def run_search_job(job_id: str, request: SolveRequest, stop_event: threading.Eve
             timeout_seconds=None,
             progress_callback=update,
             should_stop=stop_event.is_set,
+            return_all_results=True,
         )
+        all_results = response.pop("_all_results")
         with jobs_lock:
             jobs[job_id]["response"] = response
+            jobs[job_id]["all_results"] = all_results
             jobs[job_id]["status"] = "stopped" if response["search"]["stopped"] else "complete"
     except (ValueError, RuntimeError) as error:
         with jobs_lock:
@@ -128,12 +131,14 @@ def create_search_job(request: SolveRequest):
                     "stopped": False,
                     "has_more": False,
                     "returned_count": 0,
+                    "candidate_count": 0,
                     "models_seen": 0,
                     "discovered_count": 0,
                     "elapsed_seconds": 0,
                 },
             },
             "error": None,
+            "all_results": [],
             "stop_event": stop_event,
         }
     threading.Thread(target=run_search_job, args=(job_id, request, stop_event), daemon=True).start()
@@ -151,6 +156,55 @@ def get_search_job(job_id: str):
             "response": job["response"],
             "error": job["error"],
         }
+
+
+@app.get("/solve/jobs/{job_id}/results")
+def get_search_job_results(
+    job_id: str,
+    sort_key: str = "recommended",
+    min_satisfied: int = 0,
+    max_zone: int = 5,
+    min_stations: int = 0,
+    station_ids: str = "",
+):
+    if sort_key not in {"recommended", "satisfaction", "zone", "stations"}:
+        raise HTTPException(status_code=422, detail="並び順が不正です．")
+
+    with jobs_lock:
+        job = jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="探索ジョブが見つかりません．")
+        if job["status"] == "running":
+            raise HTTPException(status_code=409, detail="探索が完了していません．")
+        all_results = list(job["all_results"])
+        search = dict(job["response"]["search"])
+
+    station_filter = {station for station in station_ids.split(",") if station}
+    filtered = [
+        route for route in all_results
+        if len(route["satisfied"]) >= min_satisfied
+        and route["zone"] <= max_zone
+        and route["stations_count"] >= min_stations
+        and (not station_filter or any(station in station_filter for station in route["route_names"]))
+    ]
+
+    if sort_key == "satisfaction":
+        key = lambda route: (-len(route["satisfied"]), route["zone"], -route["stations_count"])
+    elif sort_key == "zone":
+        key = lambda route: (route["zone"], -len(route["satisfied"]), -route["stations_count"])
+    elif sort_key == "stations":
+        key = lambda route: (-route["stations_count"], -len(route["satisfied"]), route["zone"])
+    else:
+        key = lambda route: (-len(route["satisfied"]), route["zone"], -route["stations_count"])
+
+    filtered.sort(key=key)
+    results = filtered[:50]
+    search.update({
+        "returned_count": len(results),
+        "candidate_count": len(filtered),
+        "has_more": len(filtered) > len(results) or search["stopped"] or search["timed_out"],
+    })
+    return {"results": results, "search": search}
 
 
 @app.delete("/solve/jobs/{job_id}")

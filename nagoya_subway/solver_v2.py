@@ -43,6 +43,7 @@ class SubwaySolver:
         timeout_seconds: float | None = 6.0,
         progress_callback: Callable[[dict[str, Any]], None] | None = None,
         should_stop: Callable[[], bool] | None = None,
+        return_all_results: bool = False,
     ) -> dict[str, Any]:
         if len(endpoints) > 2:
             raise ValueError("始発・終着は2駅まで指定できる．")
@@ -132,8 +133,8 @@ class SubwaySolver:
             timed_out=timed_out,
             stopped=stopped,
         )
-        if progress_callback:
-            progress_callback(response)
+        if return_all_results:
+            response["_all_results"] = [route for routes in frontier.values() for route in routes]
         return response
 
     @staticmethod
@@ -161,6 +162,7 @@ class SubwaySolver:
                 "stopped": stopped,
                 "has_more": has_more,
                 "returned_count": len(results),
+                "candidate_count": len(filtered),
                 "models_seen": model_count,
                 "discovered_count": discovered_count,
                 "elapsed_seconds": round(time.monotonic() - started_at, 3),
