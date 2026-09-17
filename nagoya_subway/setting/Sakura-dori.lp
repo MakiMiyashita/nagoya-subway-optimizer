@@ -32,7 +32,7 @@ adj(s5, s6, 7, sakuradori).
 adj(s6, s7, 13, sakuradori).
 adj(s7, s8 , 10, sakuradori).
 adj(s8, s9, 11, sakuradori).
-adj(s9, s10, 1,0, sakuradori).
+adj(s9, s10, 10, sakuradori).
 adj(s10, s11, 11, sakuradori).
 adj(s11, s12, 9, sakuradori).
 adj(s12, s13, 7, sakuradori).

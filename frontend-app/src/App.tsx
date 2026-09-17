@@ -1,0 +1,148 @@
+import { useMemo, useState } from 'react';
+import { searchRoutes } from './api/solver';
+import { Onboarding } from './components/Onboarding';
+import { RouteCard } from './components/RouteCard';
+import { SearchPanel } from './components/SearchPanel';
+import { SubwayMap } from './components/SubwayMap';
+import { usePersistentConditions } from './hooks/usePersistentConditions';
+import type { RouteResult, SearchMeta, SortKey, StationRole } from './types';
+import { filterAndSortResults, type ResultFilters } from './utils/results';
+import './styles/app-v2.css';
+
+const ONBOARDING_KEY = 'nagoya-subway-onboarding-v1';
+const emptyMeta: SearchMeta = { complete: true, timedOut: false, hasMore: false, returnedCount: 0 };
+
+export default function App() {
+  const { conditions, setConditions, resetConditions } = usePersistentConditions();
+  const [activeRole, setActiveRole] = useState<StationRole>('via_soft');
+  const [results, setResults] = useState<RouteResult[]>([]);
+  const [meta, setMeta] = useState<SearchMeta>(emptyMeta);
+  const [activeResultId, setActiveResultId] = useState<string>();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [dirty, setDirty] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>('recommended');
+  const [filters, setFilters] = useState<ResultFilters>({ minSatisfied: 0, maxZone: 5, minStations: 0, stationQuery: '' });
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(() => localStorage.getItem(ONBOARDING_KEY) !== 'seen');
+
+  const displayedResults = useMemo(() => filterAndSortResults(results, filters, sortKey), [results, filters, sortKey]);
+  const activeRoute = results.find((result) => result.id === activeResultId);
+  const positiveStationCount = new Set([
+    ...conditions.selections.endpoints,
+    ...conditions.selections.via_hard,
+    ...conditions.selections.via_soft,
+  ]).size;
+
+  const changeConditions = (next: typeof conditions) => {
+    let normalized = next;
+    if (next.minZone > next.maxZone) normalized = { ...next, minZone: next.maxZone };
+    setConditions(normalized);
+    if (results.length) setDirty(true);
+  };
+
+  const toggleStation = (station: string) => {
+    const selections = Object.fromEntries(
+      Object.entries(conditions.selections).map(([role, stations]) => [role, stations.filter((item) => item !== station)]),
+    ) as typeof conditions.selections;
+    const alreadySelected = conditions.selections[activeRole].includes(station);
+    if (!alreadySelected) {
+      selections[activeRole] = activeRole === 'endpoints'
+        ? [...selections[activeRole].slice(-1), station]
+        : [...selections[activeRole], station];
+    }
+    changeConditions({ ...conditions, selections });
+  };
+
+  const removeStation = (role: StationRole, station: string) => {
+    changeConditions({
+      ...conditions,
+      selections: { ...conditions.selections, [role]: conditions.selections[role].filter((item) => item !== station) },
+    });
+  };
+
+  const handleSearch = async () => {
+    if (positiveStationCount < 2) {
+      setError('始発・終着，必須経由，希望経由の中から，異なる駅を2駅以上選んでください．');
+      setSheetOpen(true);
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const response = await searchRoutes(conditions);
+      setResults(response.results);
+      setMeta(response.search);
+      setActiveResultId(response.results[0]?.id);
+      setDirty(false);
+      setFilters((current) => ({ ...current, maxZone: conditions.maxZone }));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : '検索中にエラーが発生しました．');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReset = () => {
+    resetConditions();
+    setResults([]);
+    setMeta(emptyMeta);
+    setActiveResultId(undefined);
+    setError('');
+    setDirty(false);
+  };
+
+  const closeOnboarding = () => {
+    localStorage.setItem(ONBOARDING_KEY, 'seen');
+    setShowOnboarding(false);
+  };
+
+  return (
+    <div className="app">
+      <header className="app-header">
+        <div><span className="brand-mark">N</span><div><strong>なごや定期ルート</strong><small>欲しい駅から探す地下鉄定期</small></div></div>
+        <button className="help-button" onClick={() => setShowOnboarding(true)}>使い方</button>
+      </header>
+      <main>
+        <SubwayMap selections={conditions.selections} activeRole={activeRole} activeRoute={activeRoute} onStationClick={toggleStation} />
+        <aside className={`workspace-panel ${sheetOpen ? 'open' : ''}`}>
+          <button className="sheet-handle" onClick={() => setSheetOpen(!sheetOpen)} aria-label={sheetOpen ? 'パネルを閉じる' : 'パネルを開く'}><span /></button>
+          <SearchPanel
+            conditions={conditions}
+            activeRole={activeRole}
+            filters={filters}
+            sortKey={sortKey}
+            loading={loading}
+            resultCount={displayedResults.length}
+            error={error}
+            dirty={dirty}
+            onConditionsChange={changeConditions}
+            onRoleChange={setActiveRole}
+            onRemoveStation={removeStation}
+            onFiltersChange={setFilters}
+            onSortChange={setSortKey}
+            onSearch={handleSearch}
+            onReset={handleReset}
+          />
+          {(meta.timedOut || meta.hasMore) && <p className="search-notice">条件が広いため探索を打ち切った．ほかにも候補がある可能性がある．</p>}
+          <div className="route-list">
+            {displayedResults.map((result) => (
+              <RouteCard
+                key={result.id}
+                result={result}
+                preferredStations={conditions.selections.via_soft}
+                ticketKind={conditions.ticketKind}
+                period={conditions.period}
+                selected={result.id === activeResultId}
+                onSelect={() => setActiveResultId(result.id)}
+              />
+            ))}
+            {!loading && results.length > 0 && displayedResults.length === 0 && <p className="empty-results">絞り込みに一致する候補がない．</p>}
+            {!loading && results.length === 0 && !error && <p className="empty-results">条件を指定して検索すると，ここに候補が並ぶ．</p>}
+          </div>
+        </aside>
+      </main>
+      {showOnboarding && <Onboarding onClose={closeOnboarding} />}
+    </div>
+  );
+}

@@ -26,10 +26,12 @@ reached(Y) :- reached(X), chosen(X,Y).
     not chosen(X,Y), not chosen(Y,X). %路線の異なる同名の駅の重複使用禁止
 
 % --- 要求 ---
-satisfied(Name) :- reached(No), station(No,Name).
-:- request(Name,hard), not satisfied(Name).
+visited(Name) :- reached(No), station(No,Name).
+satisfied(Name) :- request(Name,soft), visited(Name).
+:- request(Name,hard), not visited(Name).
 warning("request is not satisfied", Name) :- request(Name,soft), not satisfied(Name).
-:- endpoint(Name), station(X,Name), {chosen(X,Y); chosen(Y,X)} != 1.
+:- endpoint(Name), #count {X,Y : station(X,Name), chosen(X,Y); X,Y : station(X,Name), chosen(Y,X)} != 1.
+:- avoid(Name), visited(Name).
 
 % --- 乗り換え制約 ---
 transfers(N) :- N = #count {X,Y : chosen(X,Y,_,transfer) }.
@@ -41,8 +43,6 @@ warning("Route too complex", T+D) :- transfers(T), complex_pts(D), complex_limit
 zone(Z) :- L = #sum{Dist,X,Y: chosen(X,Y,Dist,_)}, zone_class(Z,Min,Max), Min <= L, L< Max.
 :- zone(Z), budget(LB,UB), UB < Z.
 :- zone(Z), budget(LB,UB), Z < LB.
-#minimize {1, Name : request(Name, soft), not satisfied(Name) }.
-
 #show chosen/2.
 #show zone/1.
 #show warning/2.

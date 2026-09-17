@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: nagoya-subway-route-api
+    runtime: docker
+    dockerfilePath: ./nagoya_subway/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: SOLVER_TIMEOUT_SECONDS
+        value: "6"

@@ -1,6 +1,36 @@
-# Getting Started with Create React App
+# なごや定期ルート
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+希望する駅と予算から，名古屋市営地下鉄の定期券経路候補を探すWebアプリである．
+
+## ローカル起動
+
+フロントエンド：
+
+```bash
+cd frontend-app
+npm install
+npm run dev
+```
+
+API：
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r nagoya_subway/requirements.txt
+uvicorn nagoya_subway.app:app --reload --port 8000
+```
+
+フロントエンドは `VITE_API_BASE_URL`，APIは `ALLOWED_ORIGINS` と
+`SOLVER_TIMEOUT_SECONDS` で公開環境を設定する．
+
+## 検証
+
+```bash
+cd frontend-app
+npm run typecheck
+npm run build
+```
 
 ## Available Scripts
 
