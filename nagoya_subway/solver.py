@@ -86,6 +86,7 @@ class SubwaySolver:
         zone_val = 0
         satisfied = []
         optimization_score = 0
+        warning_logs = []
         
         if model.cost:
             optimization_score = model.cost[0]
@@ -95,7 +96,8 @@ class SubwaySolver:
             args = atom.arguments
 
             if name == "warning":
-                print(f"Warning : {args[0]} - {args[1]}")
+                warn_msg = f"{args[0]} - {args[1]}"
+                warning_logs.append(warn_msg)
             
             if name == "chosen":
                 u = str(args[0])
@@ -151,6 +153,7 @@ class SubwaySolver:
             "route_ids": route_ids,
             "route_names": route_names,
             "zone": zone_val,
+            "logs": warning_logs,
             "satisfied": sorted(satisfied),
             "score": optimization_score,
             "stations_count": len(route_ids)

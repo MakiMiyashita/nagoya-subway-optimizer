@@ -4,7 +4,6 @@ import MapViewport from './components/MapViewport';
 import Sidebar from './components/Sidebar';
 import './styles/App.css';
 
-
 function App() {
   const {
     mode,
@@ -18,7 +17,6 @@ function App() {
     handleSolve,
     isLoading
   } = useSubwaySolver();
-
 
 return (
     <div className="app-container">
